@@ -253,7 +253,7 @@ final readonly class ProjectSyncService
         $completionRate = $history['completion_rate'] ?? null;
 
         return [
-            'client_country_code' => $owner['country']['code'] ?? null,
+            'client_country_code' => filled($owner['country']['code'] ?? null) ? mb_strtoupper($owner['country']['code']) : null,
             'client_country_name' => $owner['country']['name'] ?? null,
             'client_city' => filled($owner['city'] ?? null) ? $owner['city'] : null,
             'client_registered_at' => $this->timestamp($owner['registration_date'] ?? null),

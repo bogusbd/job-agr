@@ -82,7 +82,7 @@ final class ProjectsTable
                     Stack::make([
                         TextColumn::make('client_country_code')
                             ->label('Client country')
-                            ->formatStateUsing(fn (Project $record): string => mb_trim($record->clientCountryFlag().' '.mb_strtoupper((string) $record->client_country_code)))
+                            ->formatStateUsing(fn (Project $record): string => mb_trim($record->clientCountryFlag().' '.$record->client_country_code))
                             ->tooltip(fn (Project $record): ?string => $record->client_country_name)
                             ->placeholder('—')
                             ->sortable(),

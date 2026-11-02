@@ -161,13 +161,13 @@ it('filters new and existing clients', function (bool $hasHistory) {
 ]);
 
 it('excludes projects from selected client countries', function () {
-    $indian = Project::factory()->create(['client_country_code' => 'in', 'client_country_name' => 'India']);
-    $finnish = Project::factory()->create(['client_country_code' => 'fi', 'client_country_name' => 'Finland']);
+    $indian = Project::factory()->create(['client_country_code' => 'IN', 'client_country_name' => 'India']);
+    $finnish = Project::factory()->create(['client_country_code' => 'FI', 'client_country_name' => 'Finland']);
     $unknown = Project::factory()->create(['client_country_code' => null, 'client_country_name' => null]);
 
     livewire(ListProjects::class)
         ->loadTable()
-        ->filterTable('exclude_client_country', ['in'])
+        ->filterTable('exclude_client_country', ['IN'])
         ->assertCanSeeTableRecords([$finnish, $unknown])
         ->assertCanNotSeeTableRecords([$indian]);
 });
@@ -205,4 +205,11 @@ it('shows client reputation with a payment verification icon color', function ()
         ->assertTableColumnStateSet('client_rating', '★ 4.8 (12)', $existingClientProject)
         ->assertTableColumnExists('client_rating', fn (TextColumn $column): bool => $column->getIconColor($column->getState()) === 'danger', $newClientProject)
         ->assertTableColumnExists('client_rating', fn (TextColumn $column): bool => $column->getIconColor($column->getState()) === 'success', $existingClientProject);
+});
+
+it('shows the client location with a country flag on the project page', function () {
+    $project = Project::factory()->create(['client_country_code' => 'FI', 'client_country_name' => 'Finland', 'client_city' => 'Helsinki']);
+
+    livewire(ViewProject::class, ['record' => $project->id])
+        ->assertSee('🇫🇮 Helsinki, Finland');
 });

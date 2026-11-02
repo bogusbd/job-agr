@@ -101,7 +101,7 @@ it('stores the owner profile of a new client', function () {
 
     expect($project)
         ->client_city->toBe('Helsinki')
-        ->client_country_code->toBe('fi')
+        ->client_country_code->toBe('FI')
         ->client_country_name->toBe('Finland')
         ->client_registered_at->getTimestamp()->toBe(1_793_614_216)
         ->client_reviews_count->toBe(0)

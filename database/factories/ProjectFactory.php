@@ -44,7 +44,7 @@ final class ProjectFactory extends Factory
             'bid_avg' => $budgetMax,
             'bid_avg_usd' => $budgetMax,
             'bid_period' => 7,
-            'client_country_code' => 'us',
+            'client_country_code' => 'US',
             'client_country_name' => 'United States',
             'client_city' => fake()->city(),
             'client_registered_at' => fake()->dateTimeBetween('-1 month'),
