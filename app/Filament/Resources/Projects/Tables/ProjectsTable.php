@@ -22,8 +22,14 @@ use Filament\QueryBuilder\Constraints\RelationshipConstraint;
 use Filament\QueryBuilder\Constraints\RelationshipConstraint\Operators\IsRelatedToOperator;
 use Filament\QueryBuilder\Constraints\TextConstraint;
 use Filament\Schemas\Components\Grid;
+use Filament\Support\Enums\Alignment;
+use Filament\Support\Enums\FontWeight;
+use Filament\Support\Enums\IconSize;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\Layout\Split;
+use Filament\Tables\Columns\Layout\Stack;
+use Filament\Tables\Columns\Layout\View;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Enums\FiltersLayout;
 use Filament\Tables\Filters\Filter;
@@ -33,7 +39,11 @@ use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
+use Illuminate\View\ComponentAttributeBag;
+
+use function Filament\Support\generate_icon_html;
 
 final class ProjectsTable
 {
@@ -43,74 +53,86 @@ final class ProjectsTable
             ->defaultSort('submitted_at', 'desc')
             ->recordUrl(null)
             ->recordClasses(fn (Project $record): ?string => $record->is_viewed ? 'opacity-60' : null)
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with(['primarySkill', 'skills']))
             ->columns([
-                IconColumn::make('is_viewed')
-                    ->label('')
-                    ->boolean()
-                    ->trueIcon(Heroicon::OutlinedEye)
-                    ->falseIcon(Heroicon::OutlinedSparkles)
-                    ->falseColor('primary')
-                    ->trueColor('gray'),
-                TextColumn::make('title')
-                    ->searchable(['title', 'description'])
-                    ->weight(fn (Project $record): ?string => $record->is_viewed ? null : 'bold')
-                    ->description(fn (Project $record): ?string => $record->preview_description)
-                    ->wrap()
-                    ->lineClamp(3)
-                    ->url(fn (Project $record): string => ProjectResource::getUrl('view', ['record' => $record])),
-                TextColumn::make('primary_skill_slug')
-                    ->label('Main category')
-                    ->badge()
-                    ->formatStateUsing(fn (Project $record): ?string => $record->primarySkillLabel())
-                    ->description(fn (Project $record): ?string => $record->primarySkill?->category_name)
-                    ->sortable()
-                    ->toggleable(),
-                TextColumn::make('skills.name')
-                    ->badge()
-                    ->limitList(4)
-                    ->expandableLimitedList()
-                    ->toggleable(),
-                TextColumn::make('type')
-                    ->badge()
-                    ->sortable(),
-                TextColumn::make('budget')
-                    ->state(fn (Project $record): string => ProjectInfolist::formatBudget($record))
-                    ->description(fn (Project $record): string => '≈ $'.number_format((float) $record->budget_max_usd).' max')
-                    ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderBy('budget_max_usd', $direction)),
-                TextColumn::make('bid_count')
-                    ->label('Bids')
-                    ->numeric()
-                    ->sortable(),
-                TextColumn::make('bid_avg_usd')
-                    ->label('Avg bid (USD)')
-                    ->money('USD')
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('client_country_name')
-                    ->label('Client')
-                    ->description(fn (Project $record): string => self::clientSummary($record))
-                    ->sortable()
-                    ->toggleable(),
-                TextColumn::make('client_rating')
-                    ->label('Client rating')
-                    ->numeric(decimalPlaces: 2)
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('client_registered_at')
-                    ->label('Client since')
-                    ->date()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('language')
-                    ->toggleable(isToggledHiddenByDefault: true),
-                IconColumn::make('is_active')
-                    ->label('Active')
-                    ->boolean()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('submitted_at')
-                    ->dateTime()
-                    ->since()
-                    ->sortable(),
+                Split::make([
+                    IconColumn::make('is_viewed')
+                        ->label('')
+                        ->boolean()
+                        ->trueIcon(Heroicon::OutlinedEye)
+                        ->falseIcon(Heroicon::OutlinedSparkles)
+                        ->falseColor('primary')
+                        ->trueColor('gray')
+                        ->grow(false),
+                    Split::make([
+                        TextColumn::make('title')
+                            ->searchable(['title', 'description'])
+                            ->weight(fn (Project $record): FontWeight => $record->is_viewed ? FontWeight::Medium : FontWeight::Bold)
+                            ->wrap()
+                            ->lineClamp(2)
+                            ->url(fn (Project $record): string => ProjectResource::getUrl('view', ['record' => $record]))
+                            ->grow(false),
+                        TextColumn::make('primary_skill_slug')
+                            ->label('Main category')
+                            ->badge()
+                            ->formatStateUsing(fn (Project $record): ?string => $record->primarySkillLabel())
+                            ->sortable()
+                            ->grow(false),
+                    ]),
+                    Stack::make([
+                        TextColumn::make('client_country_code')
+                            ->label('Client country')
+                            ->formatStateUsing(fn (Project $record): string => mb_trim($record->clientCountryFlag().' '.mb_strtoupper((string) $record->client_country_code)))
+                            ->tooltip(fn (Project $record): ?string => $record->client_country_name)
+                            ->placeholder('—')
+                            ->sortable(),
+                        TextColumn::make('client_rating')
+                            ->label('Client rating')
+                            ->state(fn (Project $record): string => self::clientReputation($record))
+                            ->formatStateUsing(fn (Project $record, string $state): HtmlString => self::clientReputationHtml($record, $state))
+                            ->icon(Heroicon::CreditCard)
+                            ->iconColor(fn (Project $record): string => $record->client_payment_verified ? 'success' : 'danger')
+                            ->tooltip(fn (Project $record): string => collect([
+                                $record->hasNewClient() ? 'New client (no reviews or completed projects)' : 'Existing client',
+                                $record->client_payment_verified ? 'Payment verified' : 'Payment not verified',
+                            ])->filter()->implode(' · '))
+                            ->color('gray')
+                            ->sortable(),
+                    ])
+                        ->space(1)
+                        ->extraAttributes(['class' => 'w-36'])
+                        ->grow(false),
+                    Stack::make([
+                        TextColumn::make('budget')
+                            ->state(fn (Project $record): string => ProjectInfolist::formatBudget($record))
+                            ->weight(FontWeight::SemiBold)
+                            ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderBy('budget_max_usd', $direction)),
+                        TextColumn::make('type')
+                            ->badge()
+                            ->sortable(),
+                    ])
+                        ->space(1)
+                        ->alignment(Alignment::End)
+                        ->extraAttributes(['class' => 'w-44'])
+                        ->grow(false),
+                    Stack::make([
+                        TextColumn::make('bid_count')
+                            ->label('Bids')
+                            ->formatStateUsing(fn (int $state): string => trans_choice(':count bid|:count bids', $state))
+                            ->sortable(),
+                        TextColumn::make('submitted_at')
+                            ->label('Submitted')
+                            ->since()
+                            ->dateTimeTooltip()
+                            ->color('gray')
+                            ->sortable(),
+                    ])
+                        ->space(1)
+                        ->alignment(Alignment::End)
+                        ->extraAttributes(['class' => 'w-28'])
+                        ->grow(false),
+                ])->from('md'),
+                View::make('filament.tables.projects.project-details'),
             ])
             ->filters([
                 SelectFilter::make('primary_skill_slug')
@@ -326,15 +348,35 @@ final class ProjectsTable
     }
 
     /**
-     * Short client line: city, rating with reviews (or "New client") and payment verification.
+     * Client rating with reviews, or "New" for a client without any history.
      */
-    private static function clientSummary(Project $record): string
+    private static function clientReputation(Project $record): string
     {
-        return collect([
-            $record->client_city,
-            $record->hasNewClient() ? 'New client' : '★ '.number_format((float) $record->client_rating, 1)." ({$record->client_reviews_count} reviews)",
-            $record->client_payment_verified ? 'Payment verified' : 'Payment not verified',
-        ])->filter()->implode(' · ');
+        if ($record->hasNewClient()) {
+            return 'New';
+        }
+
+        return '★ '.number_format((float) $record->client_rating, 1)." ({$record->client_reviews_count})";
+    }
+
+    /**
+     * A user icon (amber for a new client, green for a client with history) followed by the rating.
+     */
+    private static function clientReputationHtml(Project $record, string $reputation): HtmlString
+    {
+        $isNewClient = $record->hasNewClient();
+
+        $icon = generate_icon_html(
+            Heroicon::User,
+            attributes: new ComponentAttributeBag([
+                'class' => $isNewClient ? 'text-warning-500' : 'text-success-600 dark:text-success-400',
+            ]),
+            size: IconSize::Small,
+        )?->toHtml();
+
+        $text = $isNewClient ? '' : '<span>'.e($reputation).'</span>';
+
+        return new HtmlString("<span class=\"inline-flex items-center gap-1\">{$icon}{$text}</span>");
     }
 
     /**

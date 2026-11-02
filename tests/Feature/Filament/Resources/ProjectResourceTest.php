@@ -7,6 +7,7 @@ use App\Filament\Resources\Projects\Pages\ViewProject;
 use App\Models\Project;
 use App\Models\Skill;
 use Filament\Actions\Testing\TestAction;
+use Filament\Tables\Columns\TextColumn;
 
 use function Pest\Livewire\livewire;
 
@@ -192,4 +193,16 @@ it('filters by several currencies', function () {
         ->filterTable('currency_code', ['USD', 'EUR'])
         ->assertCanSeeTableRecords([$usd, $eur])
         ->assertCanNotSeeTableRecords([$inr]);
+});
+
+it('shows client reputation with a payment verification icon color', function () {
+    $newClientProject = Project::factory()->create();
+    $existingClientProject = Project::factory()->existingClient()->create(['client_rating' => 4.84, 'client_reviews_count' => 12]);
+
+    livewire(ListProjects::class)
+        ->loadTable()
+        ->assertTableColumnStateSet('client_rating', 'New', $newClientProject)
+        ->assertTableColumnStateSet('client_rating', '★ 4.8 (12)', $existingClientProject)
+        ->assertTableColumnExists('client_rating', fn (TextColumn $column): bool => $column->getIconColor($column->getState()) === 'danger', $newClientProject)
+        ->assertTableColumnExists('client_rating', fn (TextColumn $column): bool => $column->getIconColor($column->getState()) === 'success', $existingClientProject);
 });

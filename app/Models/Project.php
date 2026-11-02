@@ -62,6 +62,20 @@ final class Project extends Model
         return $this->client_reviews_count === 0 && $this->client_completed_projects_count === 0;
     }
 
+    /**
+     * The client's country as a flag emoji, built from its two-letter ISO code (e.g. "us" → 🇺🇸).
+     */
+    public function clientCountryFlag(): ?string
+    {
+        $code = mb_strtoupper((string) $this->client_country_code);
+
+        if (preg_match('/^[A-Z]{2}$/', $code) !== 1) {
+            return null;
+        }
+
+        return mb_chr(0x1F1E6 + ord($code[0]) - ord('A')).mb_chr(0x1F1E6 + ord($code[1]) - ord('A'));
+    }
+
     public function markAsViewed(): void
     {
         if ($this->is_viewed) {
