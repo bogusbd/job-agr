@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Resources\Projects\Schemas;
 
 use App\Models\Project;
+use Filament\Actions\Action;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Flex;
@@ -20,23 +21,29 @@ final class ProjectInfolist
         return $schema
             ->columns(3)
             ->components([
-                Section::make('Project')
+                Section::make(fn (Project $record): string => $record->title)
                     ->columnSpan(2)
-                    ->schema([
-                        TextEntry::make('title')
+                    ->afterHeader([
+                        Action::make('openOnFreelancer')
+                            ->label('Open on Freelancer')
+                            ->icon(Heroicon::OutlinedArrowTopRightOnSquare)
+                            ->iconButton()
+                            ->tooltip('Open on Freelancer')
                             ->url(fn (Project $record): string => $record->url(), shouldOpenInNewTab: true),
+                    ])
+                    ->schema([
                         TextEntry::make('primary_skill_slug')
                             ->label('Main category')
                             ->badge()
                             ->formatStateUsing(fn (Project $record): ?string => $record->primarySkillLabel())
                             ->helperText(fn (Project $record): ?string => $record->primarySkill?->category_name)
                             ->placeholder('—'),
-                        TextEntry::make('skills.name')
-                            ->badge(),
                         TextEntry::make('description')
                             ->prose()
                             ->formatStateUsing(fn (?string $state): string => nl2br(e($state ?? '')))
                             ->html(),
+                        TextEntry::make('skills.name')
+                            ->badge(),
                     ]),
                 Group::make([
                     Section::make('Details')
