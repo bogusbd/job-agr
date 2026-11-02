@@ -18,6 +18,7 @@ final class FreelancerApiService
 {
     /**
      * Flags that make the active projects search return full project and owner details.
+     * Freelancer.com never exposes the owner ID; `owner_info` returns the owner's anonymous profile instead.
      *
      * @var array<string, bool>
      */
@@ -26,22 +27,7 @@ final class FreelancerApiService
         'job_details' => true,
         'upgrade_details' => true,
         'location_details' => true,
-        'user_details' => true,
-        'user_country_details' => true,
-        'user_status' => true,
-        'user_employer_reputation' => true,
-        'compact' => true,
-    ];
-
-    /**
-     * Flags that make the users endpoint return the details stored on a client.
-     *
-     * @var array<string, bool>
-     */
-    public const array USER_DETAIL_FLAGS = [
-        'country_details' => true,
-        'status' => true,
-        'employer_reputation' => true,
+        'owner_info' => true,
         'compact' => true,
     ];
 
@@ -49,7 +35,7 @@ final class FreelancerApiService
      * Search active projects (GET /projects/0.1/projects/active/).
      *
      * @param  array<string, mixed>  $parameters  Any query parameter supported by the endpoint (query, jobs, project_types, min_avg_price, from_time, ...).
-     * @return array{projects: list<array<string, mixed>>, users: array<int|string, array<string, mixed>>, total_count: int}
+     * @return array{projects: list<array<string, mixed>>, total_count: int}
      */
     public function searchActiveProjects(array $parameters = []): array
     {
@@ -57,7 +43,6 @@ final class FreelancerApiService
 
         return [
             'projects' => $result['projects'] ?? [],
-            'users' => $result['users'] ?? [],
             'total_count' => (int) ($result['total_count'] ?? 0),
         ];
     }
@@ -66,7 +51,7 @@ final class FreelancerApiService
      * Walk through every page of the active projects search.
      *
      * @param  array<string, mixed>  $parameters
-     * @return Generator<int, array{projects: list<array<string, mixed>>, users: array<int|string, array<string, mixed>>, total_count: int}>
+     * @return Generator<int, array{projects: list<array<string, mixed>>, total_count: int}>
      */
     public function paginateActiveProjects(array $parameters = [], ?int $maxPages = null): Generator
     {
@@ -87,23 +72,6 @@ final class FreelancerApiService
                 Sleep::for((int) config('services.freelancer.request_delay_ms'))->milliseconds();
             }
         } while ($hasMore && ($maxPages === null || $page < $maxPages));
-    }
-
-    /**
-     * Fetch users (project owners) by their IDs (GET /users/0.1/users/).
-     *
-     * @param  list<int>  $userIds
-     * @return array<int|string, array<string, mixed>>
-     */
-    public function getUsers(array $userIds): array
-    {
-        if ($userIds === []) {
-            return [];
-        }
-
-        $result = $this->get('users/0.1/users/', [...self::USER_DETAIL_FLAGS, 'users' => $userIds]);
-
-        return $result['users'] ?? [];
     }
 
     /**

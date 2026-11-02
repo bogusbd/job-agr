@@ -22,6 +22,12 @@ final class ProjectInfolist
                     ->schema([
                         TextEntry::make('title')
                             ->url(fn (Project $record): string => $record->url(), shouldOpenInNewTab: true),
+                        TextEntry::make('primary_skill_slug')
+                            ->label('Main category')
+                            ->badge()
+                            ->formatStateUsing(fn (Project $record): ?string => $record->primarySkillLabel())
+                            ->helperText(fn (Project $record): ?string => $record->primarySkill?->category_name)
+                            ->placeholder('—'),
                         TextEntry::make('skills.name')
                             ->badge(),
                         TextEntry::make('description')
@@ -66,25 +72,41 @@ final class ProjectInfolist
                 Section::make('Client')
                     ->columnSpanFull()
                     ->columns(4)
-                    ->visible(fn (Project $record): bool => $record->client !== null)
                     ->schema([
-                        TextEntry::make('client.username')
-                            ->label('Username'),
-                        TextEntry::make('client.country_name')
-                            ->label('Country'),
-                        TextEntry::make('client.rating')
-                            ->label('Rating'),
-                        TextEntry::make('client.reviews_count')
-                            ->label('Reviews'),
-                        IconEntry::make('client.is_payment_verified')
+                        TextEntry::make('client_country_name')
+                            ->label('Location')
+                            ->state(fn (Project $record): string => collect([$record->client_city, $record->client_country_name])->filter()->implode(', '))
+                            ->placeholder('—'),
+                        TextEntry::make('client_registered_at')
+                            ->label('Member since')
+                            ->date()
+                            ->placeholder('—'),
+                        TextEntry::make('client_rating')
+                            ->label('Rating')
+                            ->state(fn (Project $record): string => $record->hasNewClient()
+                                ? 'New client'
+                                : number_format((float) $record->client_rating, 2)." ({$record->client_reviews_count} reviews)"),
+                        TextEntry::make('client_completed_projects_count')
+                            ->label('Completed projects')
+                            ->suffix(fn (Project $record): ?string => $record->client_completion_rate !== null ? " ({$record->client_completion_rate}% completion)" : null),
+                        IconEntry::make('client_payment_verified')
                             ->label('Payment verified')
                             ->boolean(),
-                        IconEntry::make('client.is_deposit_made')
+                        IconEntry::make('client_deposit_made')
                             ->label('Deposit made')
                             ->boolean(),
-                        TextEntry::make('client.registered_at')
-                            ->label('Registered')
-                            ->date(),
+                        IconEntry::make('client_email_verified')
+                            ->label('Email verified')
+                            ->boolean(),
+                        IconEntry::make('client_phone_verified')
+                            ->label('Phone verified')
+                            ->boolean(),
+                        IconEntry::make('client_identity_verified')
+                            ->label('Identity verified')
+                            ->boolean(),
+                        IconEntry::make('client_profile_complete')
+                            ->label('Profile complete')
+                            ->boolean(),
                     ]),
             ]);
     }

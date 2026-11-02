@@ -8,6 +8,7 @@ use App\Enums\ProjectType;
 use App\Filament\Resources\Projects\ProjectResource;
 use App\Filament\Resources\Projects\Schemas\ProjectInfolist;
 use App\Models\Project;
+use App\Models\Skill;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
@@ -32,6 +33,7 @@ use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Str;
 
 final class ProjectsTable
 {
@@ -56,6 +58,13 @@ final class ProjectsTable
                     ->wrap()
                     ->lineClamp(3)
                     ->url(fn (Project $record): string => ProjectResource::getUrl('view', ['record' => $record])),
+                TextColumn::make('primary_skill_slug')
+                    ->label('Main category')
+                    ->badge()
+                    ->formatStateUsing(fn (Project $record): ?string => $record->primarySkillLabel())
+                    ->description(fn (Project $record): ?string => $record->primarySkill?->category_name)
+                    ->sortable()
+                    ->toggleable(),
                 TextColumn::make('skills.name')
                     ->badge()
                     ->limitList(4)
@@ -77,8 +86,20 @@ final class ProjectsTable
                     ->money('USD')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('client.country_name')
-                    ->label('Client country')
+                TextColumn::make('client_country_name')
+                    ->label('Client')
+                    ->description(fn (Project $record): string => self::clientSummary($record))
+                    ->sortable()
+                    ->toggleable(),
+                TextColumn::make('client_rating')
+                    ->label('Client rating')
+                    ->numeric(decimalPlaces: 2)
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('client_registered_at')
+                    ->label('Client since')
+                    ->date()
+                    ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('language')
                     ->toggleable(isToggledHiddenByDefault: true),
@@ -92,21 +113,35 @@ final class ProjectsTable
                     ->sortable(),
             ])
             ->filters([
+                SelectFilter::make('primary_skill_slug')
+                    ->label('Main category')
+                    ->multiple()
+                    ->searchable()
+                    ->options(fn (): array => self::primarySkillOptions()),
+                SelectFilter::make('currency_code')
+                    ->label('Currency')
+                    ->multiple()
+                    ->searchable()
+                    ->options(fn (): array => self::currencyOptions()),
                 TernaryFilter::make('is_active')
                     ->label('Active on Freelancer')
                     ->default(true),
                 SelectFilter::make('type')
                     ->options(ProjectType::class)
                     ->multiple(),
+                SelectFilter::make('category_group')
+                    ->label('Category group')
+                    ->multiple()
+                    ->options(fn (): array => Skill::query()->whereNotNull('category_name')->distinct()->orderBy('category_name')->pluck('category_name', 'category_name')->all())
+                    ->query(fn (Builder $query, array $data): Builder => $query->when(
+                        filled($data['values'] ?? null),
+                        fn (Builder $query): Builder => $query->whereHas('primarySkill', fn (Builder $query): Builder => $query->whereIn('category_name', $data['values'])),
+                    )),
                 SelectFilter::make('skills')
                     ->relationship('skills', 'name')
                     ->multiple()
                     ->searchable()
                     ->preload(),
-                SelectFilter::make('currency_code')
-                    ->label('Currency')
-                    ->multiple()
-                    ->options(fn (): array => Project::query()->whereNotNull('currency_code')->distinct()->orderBy('currency_code')->pluck('currency_code', 'currency_code')->all()),
                 SelectFilter::make('language')
                     ->multiple()
                     ->options(fn (): array => Project::query()->whereNotNull('language')->distinct()->orderBy('language')->pluck('language', 'language')->all()),
@@ -147,12 +182,51 @@ final class ProjectsTable
                     ->query(fn (Builder $query, array $data): Builder => $query
                         ->when($data['submitted_from'] ?? null, fn (Builder $query, string $date): Builder => $query->whereDate('submitted_at', '>=', $date))
                         ->when($data['submitted_until'] ?? null, fn (Builder $query, string $date): Builder => $query->whereDate('submitted_at', '<=', $date))),
-                TernaryFilter::make('client_payment_verified')
-                    ->label('Client payment verified')
+                SelectFilter::make('client_country_code')
+                    ->label('Client country')
+                    ->multiple()
+                    ->searchable()
+                    ->options(fn (): array => self::clientCountryOptions()),
+                SelectFilter::make('exclude_client_country')
+                    ->label('Exclude client countries')
+                    ->multiple()
+                    ->searchable()
+                    ->options(fn (): array => self::clientCountryOptions())
+                    ->query(fn (Builder $query, array $data): Builder => $query->when(
+                        filled($data['values'] ?? null),
+                        fn (Builder $query): Builder => $query->where(fn (Builder $query): Builder => $query
+                            ->whereNull('client_country_code')
+                            ->orWhereNotIn('client_country_code', $data['values'])),
+                    )),
+                TernaryFilter::make('client_history')
+                    ->label('Client history')
+                    ->placeholder('All clients')
+                    ->trueLabel('Existing clients (with reviews or completed projects)')
+                    ->falseLabel('New clients (no history)')
                     ->queries(
-                        true: fn (Builder $query): Builder => $query->whereHas('client', fn (Builder $query): Builder => $query->where('is_payment_verified', true)),
-                        false: fn (Builder $query): Builder => $query->whereDoesntHave('client', fn (Builder $query): Builder => $query->where('is_payment_verified', true)),
+                        true: fn (Builder $query): Builder => $query->where(fn (Builder $query): Builder => $query
+                            ->where('client_reviews_count', '>', 0)
+                            ->orWhere('client_completed_projects_count', '>', 0)),
+                        false: fn (Builder $query): Builder => $query
+                            ->where('client_reviews_count', 0)
+                            ->where('client_completed_projects_count', 0),
                     ),
+                TernaryFilter::make('client_payment_verified')
+                    ->label('Client payment verified'),
+                TernaryFilter::make('client_deposit_made')
+                    ->label('Client deposit made'),
+                Filter::make('client_rating')
+                    ->schema([
+                        TextInput::make('min_client_rating')
+                            ->label('Min client rating')
+                            ->numeric()
+                            ->minValue(0)
+                            ->maxValue(5)
+                            ->step(0.1),
+                    ])
+                    ->query(fn (Builder $query, array $data): Builder => $query
+                        ->when(filled($data['min_client_rating'] ?? null), fn (Builder $query): Builder => $query->where('client_rating', '>=', $data['min_client_rating'])))
+                    ->indicateUsing(fn (array $data): ?string => filled($data['min_client_rating'] ?? null) ? "Client rating ≥ {$data['min_client_rating']}" : null),
                 QueryBuilder::make()
                     ->constraints([
                         TextConstraint::make('title'),
@@ -175,11 +249,29 @@ final class ProjectsTable
                                     ->searchable()
                                     ->multiple(),
                             ),
-                        NumberConstraint::make('client.rating')->label('Client rating'),
-                        BooleanConstraint::make('client.is_payment_verified')->label('Client payment verified'),
-                        TextConstraint::make('client.country_name')->label('Client country'),
+                        BooleanConstraint::make('is_sealed'),
+                        BooleanConstraint::make('is_fulltime'),
+                        BooleanConstraint::make('is_qualified'),
+                        BooleanConstraint::make('is_premium'),
+                        BooleanConstraint::make('is_recruiter'),
+                        BooleanConstraint::make('is_enterprise'),
+                        TextConstraint::make('language'),
+                        TextConstraint::make('currency_code'),
+                        TextConstraint::make('client_country_name')->label('Client country'),
+                        TextConstraint::make('client_city')->label('Client city'),
+                        DateConstraint::make('client_registered_at')->label('Client registered'),
+                        NumberConstraint::make('client_rating')->label('Client rating'),
+                        NumberConstraint::make('client_reviews_count')->label('Client reviews')->integer(),
+                        NumberConstraint::make('client_completed_projects_count')->label('Client completed projects')->integer(),
+                        NumberConstraint::make('client_completion_rate')->label('Client completion rate, %'),
+                        BooleanConstraint::make('client_payment_verified')->label('Client payment verified'),
+                        BooleanConstraint::make('client_deposit_made')->label('Client deposit made'),
+                        BooleanConstraint::make('client_email_verified')->label('Client email verified'),
+                        BooleanConstraint::make('client_phone_verified')->label('Client phone verified'),
+                        BooleanConstraint::make('client_identity_verified')->label('Client identity verified'),
+                        BooleanConstraint::make('client_profile_complete')->label('Client profile complete'),
                     ]),
-            ], layout: FiltersLayout::AboveContentCollapsible)
+            ], layout: FiltersLayout::AboveContent)
             ->filtersFormColumns(4)
             ->recordActions([
                 ViewAction::make()
@@ -231,5 +323,67 @@ final class ProjectsTable
             ->icon(fn (Project $record): Heroicon => $record->is_garbage ? Heroicon::OutlinedArrowUturnLeft : Heroicon::OutlinedTrash)
             ->color(fn (Project $record): string => $record->is_garbage ? 'gray' : 'danger')
             ->action(fn (Project $record) => $record->update(['is_garbage' => ! $record->is_garbage]));
+    }
+
+    /**
+     * Short client line: city, rating with reviews (or "New client") and payment verification.
+     */
+    private static function clientSummary(Project $record): string
+    {
+        return collect([
+            $record->client_city,
+            $record->hasNewClient() ? 'New client' : '★ '.number_format((float) $record->client_rating, 1)." ({$record->client_reviews_count} reviews)",
+            $record->client_payment_verified ? 'Payment verified' : 'Payment not verified',
+        ])->filter()->implode(' · ');
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function clientCountryOptions(): array
+    {
+        return Project::query()
+            ->whereNotNull('client_country_code')
+            ->distinct()
+            ->orderBy('client_country_name')
+            ->pluck('client_country_name', 'client_country_code')
+            ->all();
+    }
+
+    /**
+     * Main category options keyed by URL slug, labelled with the skill name when the skill is known.
+     *
+     * @return array<string, string>
+     */
+    private static function primarySkillOptions(): array
+    {
+        return Project::query()
+            ->whereNotNull('primary_skill_slug')
+            ->leftJoin('skills', 'skills.id', '=', 'projects.primary_skill_id')
+            ->groupBy('projects.primary_skill_slug', 'skills.name')
+            ->selectRaw('projects.primary_skill_slug as slug, skills.name as name, count(*) as projects_count')
+            ->toBase()
+            ->get()
+            ->mapWithKeys(fn (object $row): array => [$row->slug => ($row->name ?? Str::headline($row->slug))." ({$row->projects_count})"])
+            ->sort()
+            ->all();
+    }
+
+    /**
+     * Currency options keyed by code, with the number of projects in each currency.
+     *
+     * @return array<string, string>
+     */
+    private static function currencyOptions(): array
+    {
+        return Project::query()
+            ->whereNotNull('currency_code')
+            ->groupBy('currency_code')
+            ->selectRaw('currency_code, count(*) as projects_count')
+            ->orderBy('currency_code')
+            ->toBase()
+            ->get()
+            ->mapWithKeys(fn (object $row): array => [$row->currency_code => "{$row->currency_code} ({$row->projects_count})"])
+            ->all();
     }
 }

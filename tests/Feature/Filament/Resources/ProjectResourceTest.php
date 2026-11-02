@@ -117,3 +117,79 @@ it('hides inactive projects by default', function () {
         ->loadTable()
         ->assertCanNotSeeTableRecords([$inactive]);
 });
+
+it('filters by main category', function () {
+    $photography = Project::factory()->create(['primary_skill_slug' => 'event-photography']);
+    $drawing = Project::factory()->create(['primary_skill_slug' => 'engineering-drawing']);
+    $php = Project::factory()->create(['primary_skill_slug' => 'php']);
+
+    livewire(ListProjects::class)
+        ->loadTable()
+        ->filterTable('primary_skill_slug', ['event-photography', 'php'])
+        ->assertCanSeeTableRecords([$photography, $php])
+        ->assertCanNotSeeTableRecords([$drawing]);
+});
+
+it('filters by the category group of the main skill', function () {
+    $engineering = Skill::factory()->create(['category_name' => 'Engineering & Science']);
+    $writing = Skill::factory()->create(['category_name' => 'Writing & Content']);
+    $matching = Project::factory()->create(['primary_skill_id' => $engineering->id]);
+    $other = Project::factory()->create(['primary_skill_id' => $writing->id]);
+
+    livewire(ListProjects::class)
+        ->loadTable()
+        ->filterTable('category_group', ['Engineering & Science'])
+        ->assertCanSeeTableRecords([$matching])
+        ->assertCanNotSeeTableRecords([$other]);
+});
+
+it('filters new and existing clients', function (bool $hasHistory) {
+    $newClientProject = Project::factory()->create();
+    $existingClientProject = Project::factory()->existingClient()->create();
+
+    [$visible, $hidden] = $hasHistory ? [$existingClientProject, $newClientProject] : [$newClientProject, $existingClientProject];
+
+    livewire(ListProjects::class)
+        ->loadTable()
+        ->filterTable('client_history', $hasHistory)
+        ->assertCanSeeTableRecords([$visible])
+        ->assertCanNotSeeTableRecords([$hidden]);
+})->with([
+    'existing clients' => [true],
+    'new clients' => [false],
+]);
+
+it('excludes projects from selected client countries', function () {
+    $indian = Project::factory()->create(['client_country_code' => 'in', 'client_country_name' => 'India']);
+    $finnish = Project::factory()->create(['client_country_code' => 'fi', 'client_country_name' => 'Finland']);
+    $unknown = Project::factory()->create(['client_country_code' => null, 'client_country_name' => null]);
+
+    livewire(ListProjects::class)
+        ->loadTable()
+        ->filterTable('exclude_client_country', ['in'])
+        ->assertCanSeeTableRecords([$finnish, $unknown])
+        ->assertCanNotSeeTableRecords([$indian]);
+});
+
+it('filters by minimum client rating', function () {
+    $trusted = Project::factory()->existingClient()->create(['client_rating' => 4.8]);
+    $poor = Project::factory()->existingClient()->create(['client_rating' => 3.1]);
+
+    livewire(ListProjects::class)
+        ->loadTable()
+        ->filterTable('client_rating', ['min_client_rating' => 4.5])
+        ->assertCanSeeTableRecords([$trusted])
+        ->assertCanNotSeeTableRecords([$poor]);
+});
+
+it('filters by several currencies', function () {
+    $usd = Project::factory()->create(['currency_code' => 'USD']);
+    $eur = Project::factory()->create(['currency_code' => 'EUR']);
+    $inr = Project::factory()->create(['currency_code' => 'INR']);
+
+    livewire(ListProjects::class)
+        ->loadTable()
+        ->filterTable('currency_code', ['USD', 'EUR'])
+        ->assertCanSeeTableRecords([$usd, $eur])
+        ->assertCanNotSeeTableRecords([$inr]);
+});

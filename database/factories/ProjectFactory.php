@@ -44,6 +44,15 @@ final class ProjectFactory extends Factory
             'bid_avg' => $budgetMax,
             'bid_avg_usd' => $budgetMax,
             'bid_period' => 7,
+            'client_country_code' => 'us',
+            'client_country_name' => 'United States',
+            'client_city' => fake()->city(),
+            'client_registered_at' => fake()->dateTimeBetween('-1 month'),
+            'client_rating' => 0,
+            'client_reviews_count' => 0,
+            'client_completed_projects_count' => 0,
+            'client_payment_verified' => false,
+            'client_email_verified' => true,
             'submitted_at' => fake()->dateTimeBetween('-7 days'),
             'remote_updated_at' => now(),
             'is_active' => true,
@@ -65,6 +74,22 @@ final class ProjectFactory extends Factory
     {
         return $this->state(fn (array $attributes): array => [
             'is_garbage' => true,
+        ]);
+    }
+
+    /**
+     * A client with reviews and completed projects on Freelancer.com.
+     */
+    public function existingClient(): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'client_registered_at' => fake()->dateTimeBetween('-5 years', '-1 year'),
+            'client_rating' => fake()->randomFloat(2, 4, 5),
+            'client_reviews_count' => fake()->numberBetween(1, 50),
+            'client_completed_projects_count' => fake()->numberBetween(1, 50),
+            'client_completion_rate' => 95,
+            'client_payment_verified' => true,
+            'client_deposit_made' => true,
         ]);
     }
 

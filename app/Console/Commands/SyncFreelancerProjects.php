@@ -18,8 +18,7 @@ use Illuminate\Http\Client\RequestException;
     {--max-price= : Maximum fixed project budget}
     {--since= : Only projects submitted within the last N minutes}
     {--param=* : Any extra API parameter as key=value (array values as key[]=value)}
-    {--max-pages= : Stop after N pages (100 projects per page)}
-    {--without-clients : Do not fetch missing client (owner) details afterwards}')]
+    {--max-pages= : Stop after N pages (100 projects per page)}')]
 #[Description('Import active projects from the Freelancer.com API')]
 final class SyncFreelancerProjects extends Command
 {
@@ -46,14 +45,6 @@ final class SyncFreelancerProjects extends Command
         if ($parameters === [] && $maxPages === null && $result['complete']) {
             $deactivated = $sync->deactivateProjectsNotSeenSince($startedAt);
             $this->info("Marked {$deactivated} projects as no longer active.");
-        }
-
-        if (! $this->option('without-clients')) {
-            try {
-                $this->info('Fetched '.$sync->syncMissingClients().' missing clients.');
-            } catch (RequestException $exception) {
-                $this->warn('Could not fetch clients: '.$exception->getMessage());
-            }
         }
 
         return self::SUCCESS;

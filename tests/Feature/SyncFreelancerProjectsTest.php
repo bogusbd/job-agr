@@ -3,13 +3,12 @@
 declare(strict_types=1);
 
 use App\Enums\ProjectType;
-use App\Models\Client;
 use App\Models\Project;
+use App\Models\Skill;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
 use function Pest\Laravel\artisan;
-use function Pest\Laravel\assertDatabaseHas;
 
 /**
  * @param  array<string, mixed>  $overrides
@@ -19,7 +18,6 @@ function freelancerProject(int $id, array $overrides = []): array
 {
     return array_replace_recursive([
         'id' => $id,
-        'owner_id' => 500,
         'title' => "Project {$id}",
         'status' => 'active',
         'seo_url' => "php/project-{$id}",
@@ -39,6 +37,13 @@ function freelancerProject(int $id, array $overrides = []): array
             ['id' => 3, 'name' => 'PHP', 'seo_url' => 'php', 'category' => ['id' => 1, 'name' => 'Websites, IT & Software']],
             ['id' => 13, 'name' => 'Laravel', 'seo_url' => 'laravel', 'category' => ['id' => 1, 'name' => 'Websites, IT & Software']],
         ],
+        'owner_info' => [
+            'city' => 'Helsinki',
+            'country' => ['name' => 'Finland', 'code' => 'fi'],
+            'registration_date' => 1_793_614_216,
+            'reputation' => ['entire_history' => ['overall' => 0.0], 'earnings_score' => 0.0],
+            'status' => ['payment_verified' => false, 'email_verified' => true, 'deposit_made' => false, 'phone_verified' => true],
+        ],
     ], $overrides);
 }
 
@@ -46,49 +51,33 @@ function freelancerProject(int $id, array $overrides = []): array
  * @param  list<array<string, mixed>>  $projects
  * @return array<string, mixed>
  */
-function freelancerProjectsResponse(array $projects, int $total, array $users = []): array
+function freelancerProjectsResponse(array $projects, int $total): array
 {
-    return ['status' => 'success', 'result' => ['projects' => $projects, 'users' => $users, 'total_count' => $total]];
-}
-
-function freelancerUser(int $id): array
-{
-    return [
-        'id' => $id,
-        'username' => "client{$id}",
-        'display_name' => 'Client Name',
-        'registration_date' => 1_075_988_742,
-        'location' => ['country' => ['name' => 'Australia', 'code' => 'au'], 'city' => 'Sydney'],
-        'status' => ['payment_verified' => true, 'email_verified' => true, 'deposit_made' => false],
-        'employer_reputation' => ['entire_history' => ['overall' => 4.8, 'reviews' => 12]],
-    ];
+    return ['status' => 'success', 'result' => ['projects' => $projects, 'total_count' => $total]];
 }
 
 beforeEach(function () {
     config()->set('services.freelancer.page_size', 2);
 });
 
-it('imports every page of active projects with skills and clients', function () {
+it('imports every page of active projects with their skills', function () {
     Http::fake([
         'www.freelancer.com/api/projects/0.1/projects/active/*' => function (Request $request) {
             return match ($request->data()['offset']) {
-                '0' => Http::response(freelancerProjectsResponse([freelancerProject(1), freelancerProject(2)], 3, ['500' => freelancerUser(500)])),
-                '2' => Http::response(freelancerProjectsResponse([freelancerProject(3, ['owner_id' => 600, 'jobs' => []])], 3)),
+                '0' => Http::response(freelancerProjectsResponse([freelancerProject(1), freelancerProject(2)], 3)),
+                '2' => Http::response(freelancerProjectsResponse([freelancerProject(3, ['jobs' => []])], 3)),
             };
         },
-        'www.freelancer.com/api/users/0.1/users/*' => Http::response(['status' => 'success', 'result' => ['users' => ['600' => freelancerUser(600)]]]),
     ]);
 
     artisan('freelancer:sync-projects')->assertSuccessful();
 
-    expect(Project::count())->toBe(3)
-        ->and(Client::query()->pluck('id')->sort()->values()->all())->toBe([500, 600]);
+    expect(Project::count())->toBe(3);
 
     $project = Project::with('skills')->find(1);
 
     expect($project)
         ->type->toBe(ProjectType::Hourly)
-        ->client_id->toBe(500)
         ->currency_code->toBe('INR')
         ->budget_max_usd->toBe('20.00')
         ->bid_avg_usd->toBe('15.00')
@@ -98,11 +87,71 @@ it('imports every page of active projects with skills and clients', function () 
         ->submitted_at->getTimestamp()->toBe(1_793_350_406)
         ->and($project->skills->pluck('name')->sort()->values()->all())->toBe(['Laravel', 'PHP']);
 
-    assertDatabaseHas(Client::class, ['id' => 500, 'country_code' => 'au', 'is_payment_verified' => true, 'rating' => 4.8]);
+    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'owner_info=true'));
+});
 
-    Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'users/0.1/users')
-        && str_contains(urldecode($request->url()), 'users[]=600')
-        && ! str_contains(urldecode($request->url()), 'users[]=500'));
+it('stores the owner profile of a new client', function () {
+    Http::fake([
+        'www.freelancer.com/api/projects/0.1/projects/active/*' => Http::response(freelancerProjectsResponse([freelancerProject(1)], 1)),
+    ]);
+
+    artisan('freelancer:sync-projects')->assertSuccessful();
+
+    $project = Project::find(1);
+
+    expect($project)
+        ->client_city->toBe('Helsinki')
+        ->client_country_code->toBe('fi')
+        ->client_country_name->toBe('Finland')
+        ->client_registered_at->getTimestamp()->toBe(1_793_614_216)
+        ->client_reviews_count->toBe(0)
+        ->client_completed_projects_count->toBe(0)
+        ->client_completion_rate->toBeNull()
+        ->client_payment_verified->toBeFalse()
+        ->client_phone_verified->toBeTrue()
+        ->and($project->hasNewClient())->toBeTrue();
+});
+
+it('stores the reputation of an existing client', function () {
+    Http::fake([
+        'www.freelancer.com/api/projects/0.1/projects/active/*' => Http::response(freelancerProjectsResponse([freelancerProject(1, ['owner_info' => [
+            'reputation' => ['entire_history' => ['overall' => 4.9969269451041, 'reviews' => 24, 'complete' => 25, 'completion_rate' => 0.96]],
+            'status' => ['payment_verified' => true, 'deposit_made' => true],
+        ]])], 1)),
+    ]);
+
+    artisan('freelancer:sync-projects')->assertSuccessful();
+
+    $project = Project::find(1);
+
+    expect($project)
+        ->client_rating->toBe('5.00')
+        ->client_reviews_count->toBe(24)
+        ->client_completed_projects_count->toBe(25)
+        ->client_completion_rate->toBe('96.00')
+        ->client_payment_verified->toBeTrue()
+        ->client_deposit_made->toBeTrue()
+        ->and($project->hasNewClient())->toBeFalse();
+});
+
+it('detects the main category from the project url', function () {
+    Skill::factory()->create(['id' => 77, 'name' => 'Event Photography', 'seo_url' => 'event_photography']);
+
+    Http::fake([
+        'www.freelancer.com/api/projects/0.1/projects/active/*' => Http::response(freelancerProjectsResponse([
+            freelancerProject(1, ['seo_url' => 'php/Build-api']),
+            freelancerProject(2, ['seo_url' => 'event-photography/Surprise-Proposal-Capture']),
+            freelancerProject(3, ['seo_url' => 'engineering-drawing/Engineer-Stamp']),
+        ], 3)),
+    ]);
+
+    artisan('freelancer:sync-projects')->assertSuccessful();
+
+    expect(Project::query()->orderBy('id')->get(['primary_skill_slug', 'primary_skill_id'])->toArray())->toBe([
+        ['primary_skill_slug' => 'php', 'primary_skill_id' => 3],
+        ['primary_skill_slug' => 'event-photography', 'primary_skill_id' => 77],
+        ['primary_skill_slug' => 'engineering-drawing', 'primary_skill_id' => null],
+    ]);
 });
 
 it('keeps local statuses when a project is synced again', function () {
@@ -112,7 +161,7 @@ it('keeps local statuses when a project is synced again', function () {
         'www.freelancer.com/api/projects/0.1/projects/active/*' => Http::response(freelancerProjectsResponse([freelancerProject(1, ['bid_stats' => ['bid_count' => 42]])], 1)),
     ]);
 
-    artisan('freelancer:sync-projects', ['--without-clients' => true])->assertSuccessful();
+    artisan('freelancer:sync-projects')->assertSuccessful();
 
     expect(Project::find(1))
         ->title->toBe('Project 1')
@@ -128,7 +177,7 @@ it('deactivates projects missing from a complete unfiltered sync', function () {
         'www.freelancer.com/api/projects/0.1/projects/active/*' => Http::response(freelancerProjectsResponse([freelancerProject(1)], 1)),
     ]);
 
-    artisan('freelancer:sync-projects', ['--without-clients' => true])->assertSuccessful();
+    artisan('freelancer:sync-projects')->assertSuccessful();
 
     expect($closed->fresh()->is_active)->toBeFalse()
         ->and(Project::find(1)->is_active)->toBeTrue();
@@ -141,7 +190,7 @@ it('does not deactivate projects after a filtered sync', function () {
         'www.freelancer.com/api/projects/0.1/projects/active/*' => Http::response(freelancerProjectsResponse([freelancerProject(1)], 1)),
     ]);
 
-    artisan('freelancer:sync-projects', ['--skill' => ['3'], '--without-clients' => true])->assertSuccessful();
+    artisan('freelancer:sync-projects', ['--skill' => ['3']])->assertSuccessful();
 
     expect($other->fresh()->is_active)->toBeTrue();
 });
@@ -156,7 +205,6 @@ it('passes search filters to the api', function () {
         '--skill' => ['3', '13'],
         '--type' => ['fixed'],
         '--param' => ['min_avg_price=100', 'countries[]=us'],
-        '--without-clients' => true,
     ])->assertSuccessful();
 
     Http::assertSent(function (Request $request): bool {
@@ -178,7 +226,7 @@ it('sends the oauth token when configured', function () {
         'www.freelancer.com/api/projects/0.1/projects/active/*' => Http::response(freelancerProjectsResponse([], 0)),
     ]);
 
-    artisan('freelancer:sync-projects', ['--without-clients' => true])->assertSuccessful();
+    artisan('freelancer:sync-projects')->assertSuccessful();
 
     Http::assertSent(fn (Request $request): bool => $request->hasHeader('freelancer-oauth-v1', 'secret-token'));
 });
@@ -190,7 +238,7 @@ it('fails without deactivating anything when the api errors', function () {
         'www.freelancer.com/api/projects/0.1/projects/active/*' => Http::response(['status' => 'error'], 500),
     ]);
 
-    artisan('freelancer:sync-projects', ['--without-clients' => true])->assertFailed();
+    artisan('freelancer:sync-projects')->assertFailed();
 
     expect($project->fresh()->is_active)->toBeTrue();
 });

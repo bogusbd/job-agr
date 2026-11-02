@@ -12,9 +12,10 @@ return new class extends Migration
     {
         Schema::create('projects', function (Blueprint $table): void {
             $table->unsignedBigInteger('id')->primary()->comment('Freelancer.com project ID');
-            $table->unsignedBigInteger('client_id')->nullable()->index()->comment('Freelancer.com owner_id');
             $table->string('title');
             $table->string('seo_url')->nullable();
+            $table->string('primary_skill_slug')->nullable()->index()->comment('First segment of seo_url, e.g. engineering-drawing');
+            $table->unsignedBigInteger('primary_skill_id')->nullable()->index();
             $table->text('preview_description')->nullable();
             $table->longText('description')->nullable();
             $table->string('type', 16)->index();
@@ -44,7 +45,28 @@ return new class extends Migration
             $table->boolean('is_fulltime')->default(false);
             $table->boolean('is_local')->default(false);
             $table->boolean('is_hireme')->default(false);
+            $table->boolean('is_qualified')->default(false);
+            $table->boolean('is_premium')->default(false);
+            $table->boolean('is_recruiter')->default(false);
+            $table->boolean('is_enterprise')->default(false);
             $table->string('country_code', 8)->nullable();
+
+            $table->string('client_country_code', 8)->nullable()->index();
+            $table->string('client_country_name')->nullable();
+            $table->string('client_city')->nullable();
+            $table->timestamp('client_registered_at')->nullable()->index();
+            $table->decimal('client_rating', 4, 2)->nullable()->index();
+            $table->unsignedInteger('client_reviews_count')->default(0)->index();
+            $table->unsignedInteger('client_completed_projects_count')->default(0);
+            $table->decimal('client_completion_rate', 5, 2)->nullable();
+            $table->decimal('client_earnings_score', 8, 4)->nullable();
+            $table->boolean('client_payment_verified')->default(false)->index();
+            $table->boolean('client_deposit_made')->default(false);
+            $table->boolean('client_email_verified')->default(false);
+            $table->boolean('client_phone_verified')->default(false);
+            $table->boolean('client_identity_verified')->default(false);
+            $table->boolean('client_profile_complete')->default(false);
+            $table->boolean('client_freelancer_verified')->default(false);
 
             $table->timestamp('submitted_at')->nullable()->index();
             $table->timestamp('remote_updated_at')->nullable()->index();
