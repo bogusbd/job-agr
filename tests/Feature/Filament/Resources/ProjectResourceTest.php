@@ -257,3 +257,22 @@ it('shows the approximate max budget in usd under the price', function () {
         ->loadTable()
         ->assertTableColumnFormattedStateSet('budget_max_usd', '≈ $750 max', $project);
 });
+
+it('filters by how recently the project was submitted', function (string $window, array $visibleAges) {
+    $this->freezeTime();
+
+    $projects = collect([20, 50, 150, 600, 2000, 5000])
+        ->mapWithKeys(fn (int $minutesAgo): array => [$minutesAgo => Project::factory()->create(['submitted_at' => now()->subMinutes($minutesAgo)])]);
+
+    livewire(ListProjects::class)
+        ->loadTable()
+        ->filterTable('submitted_within', $window)
+        ->assertCanSeeTableRecords($projects->only($visibleAges))
+        ->assertCanNotSeeTableRecords($projects->except($visibleAges));
+})->with([
+    'last 30 minutes' => ['30m', [20]],
+    'last hour' => ['1h', [20, 50]],
+    'last 3 hours' => ['3h', [20, 50, 150]],
+    'last 24 hours' => ['24h', [20, 50, 150, 600]],
+    'last 7 days' => ['7d', [20, 50, 150, 600, 2000, 5000]],
+]);

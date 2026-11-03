@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Resources\Projects\Tables;
 
 use App\Enums\ProjectType;
+use App\Enums\SubmittedWithin;
 use App\Filament\Resources\Projects\ProjectResource;
 use App\Filament\Resources\Projects\Schemas\ProjectInfolist;
 use App\Models\Project;
@@ -200,7 +201,15 @@ final class ProjectsTable
                     ->query(fn (Builder $query, array $data): Builder => $query
                         ->when(filled($data['max_bids'] ?? null), fn (Builder $query): Builder => $query->where('bid_count', '<=', $data['max_bids'])))
                     ->indicateUsing(fn (array $data): ?string => filled($data['max_bids'] ?? null) ? "Bids ≤ {$data['max_bids']}" : null),
+                SelectFilter::make('submitted_within')
+                    ->label('Submitted')
+                    ->options(SubmittedWithin::class)
+                    ->query(fn (Builder $query, array $data): Builder => $query->when(
+                        SubmittedWithin::tryFrom((string) ($data['value'] ?? '')),
+                        fn (Builder $query, SubmittedWithin $window): Builder => $query->where('submitted_at', '>=', $window->since()),
+                    )),
                 Filter::make('submitted_at')
+                    ->label('Submitted between')
                     ->schema([
                         Grid::make(2)->schema([
                             DatePicker::make('submitted_from'),
