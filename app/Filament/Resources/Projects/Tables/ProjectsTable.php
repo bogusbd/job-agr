@@ -25,6 +25,7 @@ use Filament\Schemas\Components\Grid;
 use Filament\Support\Enums\Alignment;
 use Filament\Support\Enums\FontWeight;
 use Filament\Support\Enums\IconSize;
+use Filament\Support\Enums\TextSize;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\Layout\Split;
@@ -107,6 +108,11 @@ final class ProjectsTable
                             ->state(fn (Project $record): string => ProjectInfolist::formatBudget($record))
                             ->weight(FontWeight::SemiBold)
                             ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderBy('budget_max_usd', $direction)),
+                        TextColumn::make('budget_max_usd')
+                            ->label('Budget max (USD)')
+                            ->formatStateUsing(fn (?string $state): string => '≈ $'.number_format((float) $state).' max')
+                            ->size(TextSize::ExtraSmall)
+                            ->color('gray'),
                         TextColumn::make('type')
                             ->badge()
                             ->sortable(),

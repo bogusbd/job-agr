@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Resources\Projects\Schemas;
 
 use App\Models\Project;
+use Carbon\CarbonInterface;
 use Filament\Actions\Action;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -13,6 +14,7 @@ use Filament\Schemas\Components\Group;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use League\CommonMark\Extension\Autolink\AutolinkExtension;
 
 final class ProjectInfolist
 {
@@ -22,6 +24,7 @@ final class ProjectInfolist
             ->columns(3)
             ->components([
                 Section::make(fn (Project $record): string => $record->title)
+                    ->description(fn (Project $record): ?string => collect([$record->primarySkillLabel(), $record->primarySkill?->category_name])->filter()->implode(' · ') ?: null)
                     ->columnSpan(2)
                     ->afterHeader([
                         Action::make('openOnFreelancer')
@@ -32,16 +35,14 @@ final class ProjectInfolist
                             ->url(fn (Project $record): string => $record->url(), shouldOpenInNewTab: true),
                     ])
                     ->schema([
-                        TextEntry::make('primary_skill_slug')
-                            ->label('Main category')
-                            ->badge()
-                            ->formatStateUsing(fn (Project $record): ?string => $record->primarySkillLabel())
-                            ->helperText(fn (Project $record): ?string => $record->primarySkill?->category_name)
-                            ->placeholder('—'),
                         TextEntry::make('description')
                             ->prose()
-                            ->formatStateUsing(fn (?string $state): string => nl2br(e($state ?? '')))
-                            ->html(),
+                            ->markdown()
+                            ->commonMarkOptions([
+                                'html_input' => 'escape',
+                                'renderer' => ['soft_break' => "<br />\n"],
+                            ])
+                            ->commonMarkExtensions([new AutolinkExtension]),
                         TextEntry::make('skills.name')
                             ->badge(),
                     ]),
@@ -61,25 +62,13 @@ final class ProjectInfolist
                                 ->label('Commitment')
                                 ->state(fn (Project $record): ?string => $record->hourly_hours ? "{$record->hourly_hours} h / {$record->hourly_interval}" : null)
                                 ->placeholder('—'),
-                            TextEntry::make('bid_count')
-                                ->label('Bids'),
                             TextEntry::make('bid_avg')
                                 ->label('Average bid')
-                                ->numeric(decimalPlaces: 2)
-                                ->prefix(fn (Project $record): string => (string) $record->currency_sign),
+                                ->state(fn (Project $record): string => self::formatAverageBid($record)),
                             TextEntry::make('language'),
                             TextEntry::make('submitted_at')
                                 ->dateTime()
                                 ->since(),
-                            TextEntry::make('remote_updated_at')
-                                ->label('Updated')
-                                ->dateTime(),
-                            IconEntry::make('is_active')
-                                ->label('Active')
-                                ->boolean(),
-                            IconEntry::make('is_garbage')
-                                ->label('Garbage')
-                                ->boolean(),
                         ]),
                     Section::make('Client')
                         ->compact()
@@ -90,8 +79,9 @@ final class ProjectInfolist
                                 ->state(fn (Project $record): string => mb_trim($record->clientCountryFlag().' '.collect([$record->client_city, $record->client_country_name])->filter()->implode(', ')))
                                 ->placeholder('—'),
                             TextEntry::make('client_registered_at')
-                                ->label('Member since')
-                                ->date()
+                                ->label('Member for')
+                                ->formatStateUsing(fn (CarbonInterface $state): string => $state->diffForHumans(syntax: CarbonInterface::DIFF_ABSOLUTE, parts: 2))
+                                ->dateTooltip()
                                 ->placeholder('—'),
                             TextEntry::make('client_rating')
                                 ->label('Rating')
@@ -112,8 +102,38 @@ final class ProjectInfolist
                                 self::verificationEntry('client_profile_complete', 'Profile complete', Heroicon::UserCircle),
                             ]),
                         ]),
+                    Section::make('Status')
+                        ->compact()
+                        ->inlineLabel()
+                        ->collapsible()
+                        ->collapsed()
+                        ->schema([
+                            TextEntry::make('remote_updated_at')
+                                ->label('Updated')
+                                ->dateTime(),
+                            IconEntry::make('is_active')
+                                ->label('Active')
+                                ->boolean(),
+                            IconEntry::make('is_garbage')
+                                ->label('Garbage')
+                                ->boolean(),
+                        ]),
                 ])->columnSpan(1),
             ]);
+    }
+
+    /**
+     * Average bid in the project currency with the number of bids, e.g. "€83.42 (35 Bids)".
+     */
+    public static function formatAverageBid(Project $record): string
+    {
+        if ((int) $record->bid_count === 0) {
+            return 'No bids yet';
+        }
+
+        $bids = trans_choice(':count Bid|:count Bids', (int) $record->bid_count);
+
+        return ($record->currency_sign ?? '').number_format((float) $record->bid_avg, 2)." ({$bids})";
     }
 
     public static function formatBudget(Project $record): string

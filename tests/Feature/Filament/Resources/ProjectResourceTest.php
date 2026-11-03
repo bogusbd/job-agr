@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Filament\Resources\Projects\Pages\ListProjects;
 use App\Filament\Resources\Projects\Pages\ViewProject;
+use App\Filament\Resources\Projects\Schemas\ProjectInfolist;
 use App\Models\Project;
 use App\Models\Skill;
 use Filament\Actions\Testing\TestAction;
@@ -212,4 +213,47 @@ it('shows the client location with a country flag on the project page', function
 
     livewire(ViewProject::class, ['record' => $project->id])
         ->assertSee('🇫🇮 Helsinki, Finland');
+});
+
+it('shows the main category as the project section subtitle', function () {
+    $skill = Skill::factory()->create(['name' => 'PHP', 'category_name' => 'Websites, IT & Software']);
+    $project = Project::factory()->create(['primary_skill_slug' => 'php', 'primary_skill_id' => $skill->id]);
+
+    livewire(ViewProject::class, ['record' => $project->id])
+        ->assertSee('PHP · Websites, IT &amp; Software', escape: false);
+});
+
+it('renders the project description as markdown', function () {
+    $project = Project::factory()->create(['description' => "**Requirements**\nfirst line\nsee https://example.com\n\n<script>alert(1)</script>"]);
+
+    livewire(ViewProject::class, ['record' => $project->id])
+        ->assertSeeHtml('<strong>Requirements</strong><br />')
+        ->assertSeeHtml('<a href="https://example.com">https://example.com</a>')
+        ->assertDontSeeHtml('<script>alert(1)</script>');
+});
+
+it('shows how long the client has been a member', function () {
+    $this->travelTo('2026-11-03 12:00:00');
+    $project = Project::factory()->create(['client_registered_at' => '2025-06-01 12:00:00']);
+
+    livewire(ViewProject::class, ['record' => $project->id])
+        ->assertSee('1 year 5 months');
+});
+
+it('shows the average bid together with the bid count', function (int $bidCount, float $bidAverage, string $expected) {
+    $project = Project::factory()->create(['currency_sign' => '€', 'bid_count' => $bidCount, 'bid_avg' => $bidAverage]);
+
+    expect(ProjectInfolist::formatAverageBid($project))->toBe($expected);
+})->with([
+    'several bids' => [35, 83.42, '€83.42 (35 Bids)'],
+    'one bid' => [1, 50, '€50.00 (1 Bid)'],
+    'no bids' => [0, 0, 'No bids yet'],
+]);
+
+it('shows the approximate max budget in usd under the price', function () {
+    $project = Project::factory()->create(['budget_max_usd' => 750]);
+
+    livewire(ListProjects::class)
+        ->loadTable()
+        ->assertTableColumnFormattedStateSet('budget_max_usd', '≈ $750 max', $project);
 });

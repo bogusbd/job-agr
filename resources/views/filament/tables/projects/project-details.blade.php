@@ -24,8 +24,6 @@
             </div>
         @endif
 
-        <span>≈ ${{ number_format((float) $project->budget_max_usd) }} max</span>
-
         @if ($project->primarySkill?->category_name)
             <span>{{ $project->primarySkill->category_name }}</span>
         @endif
