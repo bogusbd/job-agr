@@ -76,6 +76,33 @@ final class Project extends Model
         return mb_chr(0x1F1E6 + ord($code[0]) - ord('A')).mb_chr(0x1F1E6 + ord($code[1]) - ord('A'));
     }
 
+    /**
+     * Whether Freelancer.com specifies an explicit work location for the project.
+     */
+    public function hasLocation(): bool
+    {
+        return $this->location_country !== null || $this->location_city !== null;
+    }
+
+    /**
+     * Human readable work location, e.g. "Ama, Aichi 490-1105, Japan".
+     */
+    public function locationLabel(): ?string
+    {
+        $region = mb_trim(collect([$this->location_region, $this->location_postal_code])->filter()->implode(' '));
+
+        return collect([$this->location_city, $region, $this->location_country])->filter()->implode(', ') ?: null;
+    }
+
+    public function locationMapUrl(): ?string
+    {
+        if ($this->location_latitude === null || $this->location_longitude === null) {
+            return null;
+        }
+
+        return "https://www.google.com/maps/search/?api=1&query={$this->location_latitude},{$this->location_longitude}";
+    }
+
     public function markAsViewed(): void
     {
         if ($this->is_viewed) {
@@ -105,6 +132,8 @@ final class Project extends Model
             'is_nda' => 'boolean',
             'is_fulltime' => 'boolean',
             'is_local' => 'boolean',
+            'location_latitude' => 'float',
+            'location_longitude' => 'float',
             'is_hireme' => 'boolean',
             'is_qualified' => 'boolean',
             'is_premium' => 'boolean',

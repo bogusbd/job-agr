@@ -33,6 +33,29 @@ final readonly class ProjectSyncService
     }
 
     /**
+     * Map the explicit work location of a project (set for on-site jobs and some country-restricted remote jobs).
+     * The API returns empty arrays instead of nulls for a missing location, and never fills the country code.
+     *
+     * @param  array<string, mixed>  $location
+     * @return array{location_country: ?string, location_region: ?string, location_city: ?string, location_postal_code: ?string, location_latitude: ?float, location_longitude: ?float}
+     */
+    public static function mapLocation(array $location): array
+    {
+        $text = fn (mixed $value): ?string => is_string($value) && mb_trim($value) !== '' ? mb_trim($value) : null;
+        $country = is_array($location['country'] ?? null) ? $text($location['country']['name'] ?? null) : null;
+        $hasCoordinates = is_numeric($location['latitude'] ?? null) && is_numeric($location['longitude'] ?? null);
+
+        return [
+            'location_country' => $country,
+            'location_region' => $text($location['administrative_area'] ?? null),
+            'location_city' => $text($location['vicinity'] ?? null),
+            'location_postal_code' => $text($location['postal_code'] ?? null),
+            'location_latitude' => $hasCoordinates ? (float) $location['latitude'] : null,
+            'location_longitude' => $hasCoordinates ? (float) $location['longitude'] : null,
+        ];
+    }
+
+    /**
      * Import every page of the active projects search for the given parameters.
      *
      * @param  array<string, mixed>  $parameters
@@ -227,7 +250,7 @@ final readonly class ProjectSyncService
             'is_premium' => (bool) ($upgrades['premium'] ?? false),
             'is_recruiter' => (bool) ($upgrades['recruiter'] ?? false),
             'is_enterprise' => (bool) ($upgrades['enterprise'] ?? false) || ($project['enterprise_ids'] ?? []) !== [],
-            'country_code' => $project['location']['country']['code'] ?? null,
+            ...self::mapLocation($project['location'] ?? []),
             ...$this->mapOwner($project['owner_info'] ?? []),
             'submitted_at' => $this->timestamp($project['time_submitted'] ?? $project['submitdate'] ?? null),
             'remote_updated_at' => $this->timestamp($project['time_updated'] ?? null),

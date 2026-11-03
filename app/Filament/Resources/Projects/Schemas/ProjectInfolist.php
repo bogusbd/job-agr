@@ -70,6 +70,24 @@ final class ProjectInfolist
                                 ->dateTime()
                                 ->since(),
                         ]),
+                    Section::make('Location')
+                        ->compact()
+                        ->inlineLabel()
+                        ->visible(fn (Project $record): bool => $record->is_local || $record->hasLocation())
+                        ->schema([
+                            TextEntry::make('is_local')
+                                ->label('Work')
+                                ->formatStateUsing(fn (bool $state): string => $state ? 'On-site' : 'Remote, location specified')
+                                ->badge()
+                                ->color(fn (bool $state): string => $state ? 'warning' : 'info'),
+                            TextEntry::make('location_address')
+                                ->label('Address')
+                                ->state(fn (Project $record): ?string => $record->locationLabel())
+                                ->icon(Heroicon::MapPin)
+                                ->url(fn (Project $record): ?string => $record->locationMapUrl(), shouldOpenInNewTab: true)
+                                ->tooltip(fn (Project $record): ?string => $record->locationMapUrl() ? 'Open in Google Maps' : null)
+                                ->placeholder('—'),
+                        ]),
                     Section::make('Client')
                         ->compact()
                         ->inlineLabel()

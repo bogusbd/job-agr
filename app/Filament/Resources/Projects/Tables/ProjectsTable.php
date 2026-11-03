@@ -6,6 +6,7 @@ namespace App\Filament\Resources\Projects\Tables;
 
 use App\Enums\ProjectType;
 use App\Enums\SubmittedWithin;
+use App\Enums\WorkLocation;
 use App\Filament\Resources\Projects\ProjectResource;
 use App\Filament\Resources\Projects\Schemas\ProjectInfolist;
 use App\Models\Project;
@@ -201,6 +202,14 @@ final class ProjectsTable
                     ->query(fn (Builder $query, array $data): Builder => $query
                         ->when(filled($data['max_bids'] ?? null), fn (Builder $query): Builder => $query->where('bid_count', '<=', $data['max_bids'])))
                     ->indicateUsing(fn (array $data): ?string => filled($data['max_bids'] ?? null) ? "Bids ≤ {$data['max_bids']}" : null),
+                SelectFilter::make('work_location')
+                    ->label('Work location')
+                    ->options(WorkLocation::class)
+                    ->default(WorkLocation::Remote->value)
+                    ->query(fn (Builder $query, array $data): Builder => $query->when(
+                        WorkLocation::tryFrom((string) ($data['value'] ?? '')),
+                        fn (Builder $query, WorkLocation $workLocation): Builder => $query->where('is_local', $workLocation->isLocal()),
+                    )),
                 SelectFilter::make('submitted_within')
                     ->label('Submitted')
                     ->options(SubmittedWithin::class)
@@ -308,7 +317,7 @@ final class ProjectsTable
                         BooleanConstraint::make('client_identity_verified')->label('Client identity verified'),
                         BooleanConstraint::make('client_profile_complete')->label('Client profile complete'),
                     ]),
-            ], layout: FiltersLayout::AboveContent)
+            ], layout: FiltersLayout::AboveContentCollapsible)
             ->filtersFormColumns(4)
             ->recordActions([
                 ViewAction::make()

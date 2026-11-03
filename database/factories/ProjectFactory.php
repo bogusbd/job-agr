@@ -80,6 +80,22 @@ final class ProjectFactory extends Factory
     /**
      * A client with reviews and completed projects on Freelancer.com.
      */
+    /**
+     * An on-site ("local") job with an explicit work location.
+     */
+    public function onSite(): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'is_local' => true,
+            'location_country' => 'Japan',
+            'location_region' => 'Aichi',
+            'location_city' => 'Ama',
+            'location_postal_code' => '490-1105',
+            'location_latitude' => 35.198,
+            'location_longitude' => 136.812,
+        ]);
+    }
+
     public function existingClient(): static
     {
         return $this->state(fn (array $attributes): array => [

@@ -242,3 +242,40 @@ it('fails without deactivating anything when the api errors', function () {
 
     expect($project->fresh()->is_active)->toBeTrue();
 });
+
+it('stores the explicit work location of on-site projects', function () {
+    Http::fake([
+        'www.freelancer.com/api/projects/0.1/projects/active/*' => Http::response(freelancerProjectsResponse([
+            freelancerProject(1, [
+                'local' => true,
+                'location' => [
+                    'country' => ['name' => 'Japan', 'code' => null],
+                    'vicinity' => 'Ama',
+                    'administrative_area' => 'Aichi',
+                    'postal_code' => '490-1105',
+                    'latitude' => 35.198,
+                    'longitude' => 136.812,
+                    'timezone' => [],
+                ],
+            ]),
+            freelancerProject(2, ['location' => ['country' => [], 'timezone' => []]]),
+        ], 2)),
+    ]);
+
+    artisan('freelancer:sync-projects')->assertSuccessful();
+
+    expect(Project::find(1))
+        ->is_local->toBeTrue()
+        ->location_country->toBe('Japan')
+        ->location_region->toBe('Aichi')
+        ->location_city->toBe('Ama')
+        ->location_postal_code->toBe('490-1105')
+        ->location_latitude->toBe(35.198)
+        ->location_longitude->toBe(136.812);
+
+    expect(Project::find(2))
+        ->is_local->toBeFalse()
+        ->location_country->toBeNull()
+        ->location_city->toBeNull()
+        ->location_latitude->toBeNull();
+});

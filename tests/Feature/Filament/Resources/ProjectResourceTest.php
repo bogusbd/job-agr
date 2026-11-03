@@ -276,3 +276,37 @@ it('filters by how recently the project was submitted', function (string $window
     'last 24 hours' => ['24h', [20, 50, 150, 600]],
     'last 7 days' => ['7d', [20, 50, 150, 600, 2000, 5000]],
 ]);
+
+it('shows only remote projects by default', function () {
+    $remote = Project::factory()->create();
+    $onSite = Project::factory()->onSite()->create();
+
+    livewire(ListProjects::class)
+        ->loadTable()
+        ->assertCanSeeTableRecords([$remote])
+        ->assertCanNotSeeTableRecords([$onSite]);
+});
+
+it('filters on-site projects', function () {
+    $remote = Project::factory()->create();
+    $onSite = Project::factory()->onSite()->create();
+
+    livewire(ListProjects::class)
+        ->loadTable()
+        ->filterTable('work_location', 'on_site')
+        ->assertCanSeeTableRecords([$onSite])
+        ->assertCanNotSeeTableRecords([$remote]);
+});
+
+it('shows the work location block only for projects with a location', function () {
+    $onSite = Project::factory()->onSite()->create();
+    $remote = Project::factory()->create();
+
+    livewire(ViewProject::class, ['record' => $onSite->id])
+        ->assertSee('Ama, Aichi 490-1105, Japan')
+        ->assertSee('On-site');
+
+    livewire(ViewProject::class, ['record' => $remote->id])
+        ->assertDontSee('On-site')
+        ->assertDontSee('Address');
+});
