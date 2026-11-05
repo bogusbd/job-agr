@@ -236,6 +236,7 @@ final class ProjectsTable
                 SelectFilter::make('exclude_client_country')
                     ->label('Exclude client countries')
                     ->multiple()
+                    ->default(['IN', 'PK'])
                     ->searchable()
                     ->options(fn (): array => self::clientCountryOptions())
                     ->query(fn (Builder $query, array $data): Builder => $query->when(

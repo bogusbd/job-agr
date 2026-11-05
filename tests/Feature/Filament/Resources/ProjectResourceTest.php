@@ -310,3 +310,14 @@ it('shows the work location block only for projects with a location', function (
         ->assertDontSee('On-site')
         ->assertDontSee('Address');
 });
+
+it('excludes clients from india and pakistan by default', function () {
+    $indian = Project::factory()->create(['client_country_code' => 'IN', 'client_country_name' => 'India']);
+    $pakistani = Project::factory()->create(['client_country_code' => 'PK', 'client_country_name' => 'Pakistan']);
+    $american = Project::factory()->create(['client_country_code' => 'US', 'client_country_name' => 'United States']);
+
+    livewire(ListProjects::class)
+        ->loadTable()
+        ->assertCanSeeTableRecords([$american])
+        ->assertCanNotSeeTableRecords([$indian, $pakistani]);
+});
